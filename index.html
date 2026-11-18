@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>数字华容道</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f5f5f5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    user-select: none;
+  }
+  .app {
+    width: min(92vw, 420px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .success-slot {
+    height: 150px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .success-slot img {
+    width: 150px;
+    height: 150px;
+    object-fit: contain;
+    transform: scale(0.5);
+    opacity: 0;
+    transition: transform .3s ease-out, opacity .3s ease-out;
+  }
+  .success-slot img.show { transform: scale(1); opacity: 1; }
+  .head {
+    width: 100%;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .head h1 { font-size: 22px; color: #333; }
+  .head h1.done { color: #2e7d32; }
+  .head .moves { font-size: 15px; color: #999; }
+  .board {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: #dddddd;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .tile, .player {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transition: transform .12s ease-out;
+    will-change: transform;
+  }
+  .tile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #ffffff;
+    border-radius: 8px;
+    font-size: 28px;
+    font-weight: 700;
+    color: #333;
+    cursor: pointer;
+  }
+  .tile.done { color: #2e7d32; }
+  .player { pointer-events: none; }
+  .player img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .shuffle {
+    margin-top: 20px;
+    padding: 10px 28px;
+    border: none;
+    border-radius: 20px;
+    background: #1a73e8;
+    color: #fff;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  .shuffle:active { opacity: .8; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="success-slot"><img id="win" src="miuyin_success.gif" alt=""></div>
+  <div class="head">
+    <h1 id="title">数字华容道</h1>
+    <span class="moves" id="moves">步数 0</span>
+  </div>
+  <div class="board" id="board"></div>
+  <button class="shuffle" id="shuffle">重新打乱</button>
+</div>
+<script>
+(function () {
+  var board = document.getElementById('board');
+  var title = document.getElementById('title');
+  var movesEl = document.getElementById('moves');
+  var winImg = document.getElementById('win');
+
+  var PAD = 8, GAP = 6, N = 4;
+  var tiles = [];
+  var moves = 0;
+  var won = false;
+  var cell = 0;
+
+  // 15 个数字块
+  var tileEls = {};
+  for (var n = 1; n <= 15; n++) {
+    (function (num) {
+      var el = document.createElement('div');
+      el.className = 'tile';
+      el.textContent = num;
+      el.addEventListener('click', function () { move(num); });
+      board.appendChild(el);
+      tileEls[num] = el;
+    })(n);
+  }
+
+  // 空格里的小人
+  var player = document.createElement('div');
+  player.className = 'player';
+  player.innerHTML = '<img src="miuyin_idle.gif" alt="">';
+  board.appendChild(player);
+
+  function posOf(index) {
+    return {
+      x: PAD + (index % N) * (cell + GAP),
+      y: PAD + Math.floor(index / N) * (cell + GAP)
+    };
+  }
+
+  function render(animate) {
+    var idxOf = {};
+    for (var i = 0; i < tiles.length; i++) {
+      if (tiles[i] !== 0) idxOf[tiles[i]] = i;
+    }
+
+    for (var n = 1; n <= 15; n++) {
+      var el = tileEls[n];
+      var p = posOf(idxOf[n]);
+      if (!animate) el.style.transition = 'none';
+      el.style.transform = 'translate(' + p.x + 'px, ' + p.y + 'px)';
+      el.classList.toggle('done', idxOf[n] === n - 1);
+      if (!animate) {
+        void el.offsetWidth;
+        el.style.transition = '';
+      }
+    }
+
+    var emptyIdx = tiles.indexOf(0);
+    var ep = posOf(emptyIdx);
+    if (!animate) player.style.transition = 'none';
+    player.style.transform = 'translate(' + ep.x + 'px, ' + ep.y + 'px)';
+    if (!animate) {
+      void player.offsetWidth;
+      player.style.transition = '';
+    }
+
+    movesEl.textContent = '步数 ' + moves;
+    title.textContent = won ? '完成 🎉' : '数字华容道';
+    title.classList.toggle('done', won);
+    winImg.classList.toggle('show', won);
+  }
+
+  function neighbors(index) {
+    var r = Math.floor(index / N), c = index % N;
+    var out = [];
+    if (r > 0) out.push(index - N);
+    if (r < N - 1) out.push(index + N);
+    if (c > 0) out.push(index - 1);
+    if (c < N - 1) out.push(index + 1);
+    return out;
+  }
+
+  function isSolved(arr) {
+    for (var i = 0; i < 15; i++) {
+      if (arr[i] !== i + 1) return false;
+    }
+    return arr[15] === 0;
+  }
+
+  function move(n) {
+    if (won) return;
+    var e = tiles.indexOf(0);
+    var i = tiles.indexOf(n);
+    if (neighbors(e).indexOf(i) < 0) return;
+    tiles[e] = tiles[i];
+    tiles[i] = 0;
+    moves++;
+    if (isSolved(tiles)) won = true;
+    render(true);
+  }
+
+  function reset() {
+    var arr = [];
+    for (var i = 1; i <= 15; i++) arr.push(i);
+    arr.push(0);
+    // 从复原状态随机走 300 步，保证一定有解
+    for (var s = 0; s < 300; s++) {
+      var e = arr.indexOf(0);
+      var nb = neighbors(e);
+      var pick = nb[Math.floor(Math.random() * nb.length)];
+      arr[e] = arr[pick];
+      arr[pick] = 0;
+    }
+    tiles = arr;
+    moves = 0;
+    won = false;
+    if (cell > 0) render(false);
+  }
+
+  function layout() {
+    var W = board.clientWidth;
+    cell = (W - PAD * 2 - GAP * 3) / N;
+    var size = cell + 'px';
+    for (var n = 1; n <= 15; n++) {
+      tileEls[n].style.width = size;
+      tileEls[n].style.height = size;
+    }
+    player.style.width = size;
+    player.style.height = size;
+    render(false);
+  }
+
+  document.getElementById('shuffle').addEventListener('click', reset);
+  window.addEventListener('resize', layout);
+
+  reset();
+  layout();
+})();
+</script>
+</body>
+</html>
