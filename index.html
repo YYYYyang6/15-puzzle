@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>数字华容道</title>
+<title>15-Puzzle</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; }
@@ -43,11 +43,21 @@
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    margin-bottom: 14px;
   }
   .head h1 { font-size: 22px; color: #333; }
   .head h1.done { color: #2e7d32; }
   .head .moves { font-size: 15px; color: #999; }
+  .stats {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    color: #999;
+    margin-top: 4px;
+    margin-bottom: 12px;
+  }
+  .stats .link { color: #f0a020; cursor: pointer; }
   .board {
     position: relative;
     width: 100%;
@@ -77,43 +87,319 @@
   .tile.done { color: #2e7d32; }
   .player { pointer-events: none; }
   .player img { width: 100%; height: 100%; object-fit: contain; display: block; }
-  .shuffle {
+  .actions {
     margin-top: 20px;
-    padding: 10px 28px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  button {
+    padding: 10px 20px;
     border: none;
     border-radius: 20px;
-    background: #1a73e8;
-    color: #fff;
     font-size: 15px;
     cursor: pointer;
+    transition: opacity .2s;
   }
-  .shuffle:active { opacity: .8; }
+  button:active { opacity: .8; }
+  button:disabled { opacity: .5; cursor: default; }
+  #shuffle { background: #1a73e8; color: #fff; }
+  #undo { background: #ffffff; color: #666; border: 1px solid #bbb; }
+  #solve { background: #ffffff; color: #1a73e8; border: 1px solid #1a73e8; }
+
+  /* 引导条 */
+  .guide-tip {
+    display: none;
+    margin-top: 12px;
+    font-size: 13px;
+    color: #f0a020;
+  }
+  .guide-tip.show { display: block; }
+  .guide {
+    display: none;
+    margin-top: 12px;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .guide.show { display: flex; }
+  .guide button {
+    padding: 8px 14px;
+    font-size: 14px;
+  }
+  #prevStep, #nextStep {
+    background: #ffffff;
+    color: #1a73e8;
+    border: 1px solid #1a73e8;
+    min-width: 44px;
+  }
+  #stepInfo {
+    font-size: 14px;
+    color: #666;
+    min-width: 62px;
+    text-align: center;
+  }
+  #autoPlay {
+    background: #1a73e8;
+    color: #fff;
+  }
+  #exitGuide {
+    background: transparent;
+    color: #999;
+    border: 1px solid #ddd;
+    padding: 8px 10px;
+  }
+
+  /* 记录弹窗 */
+  .modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+  }
+  .modal.show { display: flex; }
+  .modal-box {
+    background: #fff;
+    border-radius: 16px;
+    padding: 20px 22px;
+    width: min(86vw, 360px);
+    max-height: 80vh;
+    overflow: auto;
+  }
+  .modal-box h2 {
+    font-size: 18px;
+    color: #333;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  .records { display: flex; gap: 18px; }
+  .records .col { flex: 1; min-width: 0; }
+  .records h3 {
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 8px;
+    font-weight: normal;
+  }
+  .records ol { list-style: none; }
+  .records li {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    color: #333;
+    padding: 5px 0;
+    border-bottom: 1px dashed #eee;
+  }
+  .records li .rank { color: #bbb; }
+  .records li.empty { color: #bbb; justify-content: center; }
+  .modal-close {
+    display: block;
+    margin: 18px auto 0;
+    background: #1a73e8;
+    color: #fff;
+  }
 </style>
 </head>
 <body>
 <div class="app">
   <div class="success-slot"><img id="win" src="miuyin_success.gif" alt=""></div>
   <div class="head">
-    <h1 id="title">数字华容道</h1>
+    <h1 id="title">15-Puzzle</h1>
     <span class="moves" id="moves">步数 0</span>
   </div>
+  <div class="stats">
+    <span id="time">时间 00:00</span>
+    <span id="openRecords" class="link">记录 ›</span>
+  </div>
   <div class="board" id="board"></div>
-  <button class="shuffle" id="shuffle">重新打乱</button>
+  <div class="actions">
+    <button id="undo">撤销</button>
+    <button id="shuffle">重新打乱</button>
+    <button id="solve">自动求解</button>
+  </div>
+  <div class="guide-tip" id="guideTip"></div>
+  <div class="guide" id="guide">
+    <button id="prevStep">◀</button>
+    <span id="stepInfo">0 / 0</span>
+    <button id="nextStep">▶</button>
+    <button id="autoPlay">自动播放</button>
+    <button id="exitGuide">×</button>
+  </div>
 </div>
+
+<div class="modal" id="modal">
+  <div class="modal-box">
+    <h2>最佳成绩</h2>
+    <div class="records">
+      <div class="col">
+        <h3>最快用时</h3>
+        <ol id="timeList"></ol>
+      </div>
+      <div class="col">
+        <h3>最少步数</h3>
+        <ol id="movesList"></ol>
+      </div>
+    </div>
+    <button class="modal-close" id="closeModal">关闭</button>
+  </div>
+</div>
+
 <script>
 (function () {
+  'use strict';
+
   var board = document.getElementById('board');
   var title = document.getElementById('title');
   var movesEl = document.getElementById('moves');
+  var timeEl = document.getElementById('time');
   var winImg = document.getElementById('win');
+  var solveBtn = document.getElementById('solve');
+  var shuffleBtn = document.getElementById('shuffle');
+  var undoBtn = document.getElementById('undo');
+  var modal = document.getElementById('modal');
+  var openRecordsEl = document.getElementById('openRecords');
+  var closeModalBtn = document.getElementById('closeModal');
+  var timeListEl = document.getElementById('timeList');
+  var movesListEl = document.getElementById('movesList');
+  var guideEl = document.getElementById('guide');
+  var prevStepBtn = document.getElementById('prevStep');
+  var nextStepBtn = document.getElementById('nextStep');
+  var stepInfoEl = document.getElementById('stepInfo');
+  var autoPlayBtn = document.getElementById('autoPlay');
+  var guideTipEl = document.getElementById('guideTip');
+  var exitGuideBtn = document.getElementById('exitGuide');
 
   var PAD = 8, GAP = 6, N = 4;
+  var STORAGE_KEY = 'huarongdao_records_v1';
+  var MAX_RECORDS = 10;
+
   var tiles = [];
   var moves = 0;
   var won = false;
   var cell = 0;
+  var solving = false;
+  var history = [];
 
-  // 15 个数字块
+  var startAt = 0;
+  var tickTimer = null;
+  var records = loadRecords();
+
+  // 引导模式
+  var guiding = false;
+  var solution = [];
+  var stepIndex = 0;
+  var baseTiles = [];
+  var initialTiles = [];
+  var baseMoves = 0;
+  var autoPlaying = false;
+  var autoTimer = null;
+
+  // ---------- 成绩记录 ----------
+  function loadRecords() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        var d = JSON.parse(raw);
+        return {
+          times: Array.isArray(d.times) ? d.times : [],
+          moves: Array.isArray(d.moves) ? d.moves : []
+        };
+      }
+    } catch (e) { /* 忽略 */ }
+    return { times: [], moves: [] };
+  }
+
+  function saveRecords() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    } catch (e) { /* 忽略 */ }
+  }
+
+  function addRecord(t, m) {
+    records.times.push(t);
+    records.times.sort(function (a, b) { return a - b; });
+    records.times = records.times.slice(0, MAX_RECORDS);
+
+    records.moves.push(m);
+    records.moves.sort(function (a, b) { return a - b; });
+    records.moves = records.moves.slice(0, MAX_RECORDS);
+
+    saveRecords();
+  }
+
+  function fmt(ms) {
+    var total = Math.floor(ms / 1000);
+    var m = Math.floor(total / 60);
+    var s = total % 60;
+    var cs = Math.floor((ms % 1000) / 10);
+    return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s +
+      '.' + (cs < 10 ? '0' : '') + cs;
+  }
+
+  function fillList(el, vals, formatter) {
+    el.innerHTML = '';
+    if (!vals.length) {
+      var empty = document.createElement('li');
+      empty.className = 'empty';
+      empty.textContent = '还没有记录';
+      el.appendChild(empty);
+      return;
+    }
+    vals.forEach(function (v, i) {
+      var li = document.createElement('li');
+      var rank = document.createElement('span');
+      rank.className = 'rank';
+      rank.textContent = (i + 1) + '.';
+      var val = document.createElement('span');
+      val.textContent = formatter(v);
+      li.appendChild(rank);
+      li.appendChild(val);
+      el.appendChild(li);
+    });
+  }
+
+  function renderRecords() {
+    fillList(timeListEl, records.times, fmt);
+    fillList(movesListEl, records.moves, function (n) { return n + ' 步'; });
+  }
+
+  function openRecords() {
+    renderRecords();
+    modal.classList.add('show');
+  }
+
+  function closeRecords() {
+    modal.classList.remove('show');
+  }
+
+  // ---------- 计时 ----------
+  function elapsed() {
+    return startAt ? Date.now() - startAt : 0;
+  }
+
+  function tick() {
+    timeEl.textContent = '时间 ' + fmt(elapsed());
+  }
+
+  function startTimer() {
+    if (tickTimer) return;
+    if (!startAt) startAt = Date.now();
+    tickTimer = setInterval(tick, 50);
+    tick();
+  }
+
+  function stopTimer() {
+    if (tickTimer) {
+      clearInterval(tickTimer);
+      tickTimer = null;
+    }
+  }
+
+  // ---------- 建界面 ----------
   var tileEls = {};
   for (var n = 1; n <= 15; n++) {
     (function (num) {
@@ -126,12 +412,12 @@
     })(n);
   }
 
-  // 空格里的小人
   var player = document.createElement('div');
   player.className = 'player';
   player.innerHTML = '<img src="miuyin_idle.gif" alt="">';
   board.appendChild(player);
 
+  // ---------- 渲染 ----------
   function posOf(index) {
     return {
       x: PAD + (index % N) * (cell + GAP),
@@ -157,8 +443,7 @@
       }
     }
 
-    var emptyIdx = tiles.indexOf(0);
-    var ep = posOf(emptyIdx);
+    var ep = posOf(tiles.indexOf(0));
     if (!animate) player.style.transition = 'none';
     player.style.transform = 'translate(' + ep.x + 'px, ' + ep.y + 'px)';
     if (!animate) {
@@ -167,11 +452,13 @@
     }
 
     movesEl.textContent = '步数 ' + moves;
-    title.textContent = won ? '完成 🎉' : '数字华容道';
+    title.textContent = won ? '完成 🎉' : '15-Puzzle';
     title.classList.toggle('done', won);
     winImg.classList.toggle('show', won);
+    undoBtn.disabled = (history.length === 0) || solving || guiding;
   }
 
+  // ---------- 规则 ----------
   function neighbors(index) {
     var r = Math.floor(index / N), c = index % N;
     var out = [];
@@ -189,23 +476,53 @@
     return arr[15] === 0;
   }
 
+  function applyMoveTo(dest, record) {
+    if (record !== false) {
+      history.push({ tiles: tiles.slice(), moves: moves, won: won });
+    }
+    var z = tiles.indexOf(0);
+    tiles[z] = tiles[dest];
+    tiles[dest] = 0;
+    moves++;
+    if (!solving) startTimer();
+
+    if (isSolved(tiles)) {
+      won = true;
+      stopTimer();
+      if (!solving) {
+        var t = elapsed();
+        timeEl.textContent = '时间 ' + fmt(t);
+        addRecord(t, moves);
+      }
+    }
+    render(true);
+  }
+
   function move(n) {
-    if (won) return;
+    if (won || solving || guiding) return;
     var e = tiles.indexOf(0);
     var i = tiles.indexOf(n);
     if (neighbors(e).indexOf(i) < 0) return;
-    tiles[e] = tiles[i];
-    tiles[i] = 0;
-    moves++;
-    if (isSolved(tiles)) won = true;
+    applyMoveTo(i);
+  }
+
+  function undo() {
+    if (solving || guiding || history.length === 0) return;
+    var prev = history.pop();
+    tiles = prev.tiles;
+    moves = prev.moves;
+    won = prev.won;
+    if (!won && startAt) startTimer();
     render(true);
   }
 
   function reset() {
+    exitGuide();
+    stopTimer();
+    startAt = 0;
     var arr = [];
     for (var i = 1; i <= 15; i++) arr.push(i);
     arr.push(0);
-    // 从复原状态随机走 300 步，保证一定有解
     for (var s = 0; s < 300; s++) {
       var e = arr.indexOf(0);
       var nb = neighbors(e);
@@ -214,11 +531,181 @@
       arr[pick] = 0;
     }
     tiles = arr;
+    initialTiles = arr.slice();
     moves = 0;
     won = false;
+    history = [];
+    timeEl.textContent = '时间 00:00';
     if (cell > 0) render(false);
   }
 
+  // ---------- 最优解：IDA* + 曼哈顿距离 ----------
+  var TARGET = [15];
+  for (var t = 1; t <= 15; t++) TARGET[t] = t - 1;
+
+  function manhattan(s) {
+    var d = 0;
+    for (var i = 0; i < 16; i++) {
+      var v = s[i];
+      if (v === 0) continue;
+      var r = (i / 4) | 0, c = i % 4;
+      var tr = (TARGET[v] / 4) | 0, tc = TARGET[v] % 4;
+      d += Math.abs(r - tr) + Math.abs(c - tc);
+    }
+    return d;
+  }
+
+  function searchKeep(state, z, g, prev, bound, path) {
+    var h = manhattan(state);
+    var f = g + h;
+    if (f > bound) return f;
+    if (h === 0) return -1;
+
+    var min = Infinity;
+    var ns = neighbors(z);
+    for (var k = 0; k < ns.length; k++) {
+      var nb = ns[k];
+      if (nb === prev) continue;
+
+      state[z] = state[nb];
+      state[nb] = 0;
+      path.push(nb);
+      var r = searchKeep(state, nb, g + 1, z, bound, path);
+      if (r === -1) return -1;
+      if (r < min) min = r;
+      path.pop();
+      state[nb] = state[z];
+      state[z] = 0;
+    }
+    return min;
+  }
+
+  function findPath(startArr) {
+    var state = startArr.slice();
+    var path = [];
+    var bound = manhattan(state);
+    var t0 = performance.now();
+
+    while (true) {
+      if (performance.now() - t0 > 25000) return null;
+      var r = searchKeep(state, state.indexOf(0), 0, -1, bound, path);
+      if (r === -1) return path.slice();
+      if (r === Infinity) return null;
+      bound = r;
+    }
+  }
+
+  // ---------- 引导模式 ----------
+  function renderGuide() {
+    stepInfoEl.textContent = stepIndex + ' / ' + solution.length;
+    prevStepBtn.disabled = stepIndex <= 0;
+    nextStepBtn.disabled = stepIndex >= solution.length;
+    autoPlayBtn.textContent = autoPlaying ? '暂停' : '自动播放';
+  }
+
+  function guideStepTo(newIndex) {
+    if (newIndex < 0) newIndex = 0;
+    if (newIndex > solution.length) newIndex = solution.length;
+    stepIndex = newIndex;
+
+    var t = baseTiles.slice();
+    for (var i = 0; i < stepIndex; i++) {
+      var z = t.indexOf(0);
+      var d = solution[i];
+      t[z] = t[d];
+      t[d] = 0;
+    }
+    tiles = t;
+    moves = baseMoves + stepIndex;
+    won = isSolved(tiles);
+    render(true);
+    renderGuide();
+  }
+
+  function stopAutoPlay() {
+    if (autoTimer) {
+      clearInterval(autoTimer);
+      autoTimer = null;
+    }
+    autoPlaying = false;
+  }
+
+  function toggleAutoPlay() {
+    if (autoPlaying) {
+      stopAutoPlay();
+      renderGuide();
+      return;
+    }
+    if (stepIndex >= solution.length) return;
+    autoPlaying = true;
+    autoTimer = setInterval(function () {
+      if (stepIndex >= solution.length) {
+        stopAutoPlay();
+        renderGuide();
+        return;
+      }
+      guideStepTo(stepIndex + 1);
+    }, 220);
+    renderGuide();
+  }
+
+  function exitGuide() {
+    stopAutoPlay();
+    startAt = 0;
+    guiding = false;
+    solution = [];
+    stepIndex = 0;
+    guideEl.classList.remove('show');
+    guideTipEl.classList.remove('show');
+    solveBtn.disabled = false;
+    solveBtn.textContent = '自动求解';
+    undoBtn.disabled = history.length === 0;
+  }
+
+  function startGuiding(path, userMoves) {
+    stopAutoPlay();
+    stopTimer();
+    startAt = 0;
+    timeEl.textContent = '时间 00:00';
+    solution = path;
+    baseTiles = initialTiles.slice();
+    baseMoves = 0;
+    stepIndex = 0;
+    guiding = true;
+    tiles = initialTiles.slice();
+    moves = 0;
+    won = false;
+    guideTipEl.textContent = userMoves > 0
+      ? '你走了 ' + userMoves + ' 步 · 最优 ' + path.length + ' 步'
+      : '最优解 ' + path.length + ' 步';
+    guideEl.classList.add('show');
+    guideTipEl.classList.add('show');
+    render(true);
+    renderGuide();
+  }
+
+  function autoSolve() {
+    if (solving || guiding || won) return;
+    solving = true;
+    solveBtn.disabled = true;
+    solveBtn.textContent = '计算中…';
+    undoBtn.disabled = true;
+    var userMoves = moves;
+
+    setTimeout(function () {
+      var path = findPath(initialTiles);
+      solving = false;
+      solveBtn.disabled = false;
+      solveBtn.textContent = '自动求解';
+      if (path && path.length > 0) {
+        startGuiding(path, userMoves);
+      } else {
+        undoBtn.disabled = history.length === 0;
+      }
+    }, 60);
+  }
+
+  // ---------- 启动 ----------
   function layout() {
     var W = board.clientWidth;
     cell = (W - PAD * 2 - GAP * 3) / N;
@@ -232,7 +719,18 @@
     render(false);
   }
 
-  document.getElementById('shuffle').addEventListener('click', reset);
+  shuffleBtn.addEventListener('click', reset);
+  solveBtn.addEventListener('click', autoSolve);
+  undoBtn.addEventListener('click', undo);
+  prevStepBtn.addEventListener('click', function () { if (!autoPlaying) guideStepTo(stepIndex - 1); });
+  nextStepBtn.addEventListener('click', function () { if (!autoPlaying) guideStepTo(stepIndex + 1); });
+  autoPlayBtn.addEventListener('click', toggleAutoPlay);
+  exitGuideBtn.addEventListener('click', exitGuide);
+  openRecordsEl.addEventListener('click', openRecords);
+  closeModalBtn.addEventListener('click', closeRecords);
+  modal.addEventListener('click', function (e) {
+    if (e.target === modal) closeRecords();
+  });
   window.addEventListener('resize', layout);
 
   reset();
